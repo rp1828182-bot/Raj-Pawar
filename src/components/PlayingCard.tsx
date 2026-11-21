@@ -1,9 +1,26 @@
 import React, { useState } from 'react';
 import { Crown } from 'lucide-react';
 import { getRankLabel, getSuitSymbol, isRedSuit, isWildCard } from '../game/rummyEngine';
-import { Card, Rank } from '../game/types';
+import { Card, CardThemeId, Rank } from '../game/types';
 
-export const CARD_BACK_IMAGE = '/src/assets/images/royal_card_back_1795225341494.jpg';
+export const CARD_BACK_EMERALD = '/src/assets/images/royal_card_back_1795225341494.jpg';
+export const CARD_BACK_CRIMSON = '/src/assets/images/card_back_crimson_1795229892990.jpg';
+export const CARD_BACK_BLUE = '/src/assets/images/card_back_blue_1795229892922.jpg';
+export const CARD_BACK_IMAGE = CARD_BACK_EMERALD;
+
+export function getCardBackImage(themeId: CardThemeId = 'EMERALD_GOLD'): string | null {
+  switch (themeId) {
+    case 'EMERALD_GOLD':
+      return CARD_BACK_EMERALD;
+    case 'RUBY_CRIMSON':
+      return CARD_BACK_CRIMSON;
+    case 'SAPPHIRE_BLUE':
+      return CARD_BACK_BLUE;
+    case 'GOLDEN_MAHARAJA':
+    case 'OBSIDIAN_BLACK':
+      return null; // rendered via rich SVG/CSS pattern
+  }
+}
 
 interface PlayingCardProps {
   card?: Card;
@@ -11,6 +28,7 @@ interface PlayingCardProps {
   faceDown?: boolean;
   selected?: boolean;
   isNew?: boolean;
+  themeId?: CardThemeId;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   onClick?: () => void;
   disabled?: boolean;
@@ -30,6 +48,7 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
   faceDown = false,
   selected = false,
   isNew = false,
+  themeId = 'EMERALD_GOLD',
   size = 'md',
   onClick,
   disabled = false,
@@ -40,24 +59,49 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
   const sizeClass = SIZE_CLASSES[size];
 
   if (faceDown || !card) {
+    const backImage = getCardBackImage(themeId);
+
     return (
       <button
         type="button"
         onClick={onClick}
         disabled={disabled || !onClick}
         aria-label="Face-down playing card"
-        className={`relative overflow-hidden border border-[#d4af37]/40 bg-[#0b2f20] select-none transition-transform duration-150 ease-out playing-card-shadow ${sizeClass} ${
+        className={`relative overflow-hidden border select-none transition-transform duration-150 ease-out playing-card-shadow ${sizeClass} ${
+          themeId === 'RUBY_CRIMSON'
+            ? 'border-[#f87171]/40 bg-[#450a0a]'
+            : themeId === 'SAPPHIRE_BLUE'
+              ? 'border-[#60a5fa]/40 bg-[#0c2340]'
+              : themeId === 'GOLDEN_MAHARAJA'
+                ? 'border-[#fbbf24] bg-[#78350f]'
+                : themeId === 'OBSIDIAN_BLACK'
+                  ? 'border-[#d4af37]/60 bg-[#09090b]'
+                  : 'border-[#d4af37]/40 bg-[#0b2f20]'
+        } ${
           onClick && !disabled ? 'cursor-pointer hover:-translate-y-1 active:scale-[0.98]' : 'cursor-default'
         } ${className}`}
       >
-        {!backImgFailed ? (
+        {backImage && !backImgFailed ? (
           <img
-            src={CARD_BACK_IMAGE}
-            alt="Royal card back"
+            src={backImage}
+            alt="Card back"
             referrerPolicy="no-referrer"
             onError={() => setBackImgFailed(true)}
             className="w-full h-full object-cover"
           />
+        ) : themeId === 'GOLDEN_MAHARAJA' ? (
+          <div className="w-full h-full p-1 bg-gradient-to-br from-[#b45309] via-[#f59e0b] to-[#78350f] flex items-center justify-center">
+            <div className="w-full h-full border-2 border-[#fef3c7] rounded flex flex-col items-center justify-center gap-0.5">
+              <Crown className="w-4 h-4 text-[#451a03]" />
+              <div className="w-3 h-0.5 bg-[#451a03]/60 rounded-full" />
+            </div>
+          </div>
+        ) : themeId === 'OBSIDIAN_BLACK' ? (
+          <div className="w-full h-full p-1 bg-gradient-to-br from-[#18181b] via-[#27272a] to-[#09090b] flex items-center justify-center">
+            <div className="w-full h-full border border-[#e5b84b]/70 rounded flex flex-col items-center justify-center">
+              <span className="text-[#e5b84b] text-xs font-display font-bold">RR</span>
+            </div>
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center p-1 bg-gradient-to-br from-[#0e3f2a] via-[#4a1019] to-[#0b2f20]">
             <div className="w-full h-full border border-[#d4af37]/60 rounded flex items-center justify-center">
@@ -68,6 +112,7 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
       </button>
     );
   }
+
 
   const wild = wildRank > 0 && isWildCard(card, wildRank);
   const red = isRedSuit(card.suit);

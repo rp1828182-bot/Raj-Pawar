@@ -1,29 +1,34 @@
 import React from 'react';
-import { Trophy, RotateCcw, ArrowRight } from 'lucide-react';
-import { GameMode, Rank, RoundResult } from '../game/types';
+import { ArrowDownLeft, ArrowRight, Coins, RotateCcw, Trophy } from 'lucide-react';
+import { CardThemeId, GameMode, Rank, RoundResult } from '../game/types';
 import { PlayingCard } from './PlayingCard';
 
 interface RoundSummaryModalProps {
   result: RoundResult;
   wildRank: Rank;
   gameMode: GameMode;
+  cardTheme?: CardThemeId;
   isGameOver: boolean;
   matchWinnerName?: string;
   onNextRound: () => void;
   onReturnToMenu: () => void;
   onPlayAgain: () => void;
+  onOpenWithdraw?: () => void;
 }
 
 export const RoundSummaryModal: React.FC<RoundSummaryModalProps> = ({
   result,
   wildRank,
   gameMode,
+  cardTheme = 'EMERALD_GOLD',
   isGameOver,
   matchWinnerName,
   onNextRound,
   onReturnToMenu,
   onPlayAgain,
+  onOpenWithdraw,
 }) => {
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-3 sm:p-6"
@@ -63,7 +68,20 @@ export const RoundSummaryModal: React.FC<RoundSummaryModalProps> = ({
               </p>
             </div>
           </div>
+
+          {result.cashPotWon !== undefined && result.cashPotWon > 0 && (
+            <div className="flex items-center gap-3 bg-[#103828] border border-[#34d399]/40 px-3.5 py-1.5 rounded-xl">
+              <Coins className="w-5 h-5 text-[#e5b84b]" />
+              <div>
+                <div className="text-[10px] text-[#9eb3a8] uppercase font-semibold">Pot Won / जीती गई राशि</div>
+                <div className="text-sm sm:text-base font-bold font-mono-num text-[#34d399]">
+                  +₹{result.cashPotWon.toFixed(2)}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+
 
         {/* Players Breakdown */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4">
@@ -150,6 +168,7 @@ export const RoundSummaryModal: React.FC<RoundSummaryModalProps> = ({
                             key={card.id}
                             card={card}
                             wildRank={wildRank}
+                            themeId={cardTheme}
                             size="xs"
                           />
                         ))}
@@ -164,13 +183,25 @@ export const RoundSummaryModal: React.FC<RoundSummaryModalProps> = ({
 
         {/* Actions Footer */}
         <div className="px-6 py-4 border-t border-white/10 bg-[#081a12] flex flex-wrap items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onReturnToMenu}
-            className="min-h-[44px] px-4 py-2 rounded-lg border border-white/15 text-sm font-medium text-[#dbe5df] hover:bg-white/10 transition-colors cursor-pointer whitespace-nowrap"
-          >
-            Table Setup
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onReturnToMenu}
+              className="min-h-[44px] px-4 py-2 rounded-lg border border-white/15 text-sm font-medium text-[#dbe5df] hover:bg-white/10 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              Table Setup
+            </button>
+            {onOpenWithdraw && (
+              <button
+                type="button"
+                onClick={onOpenWithdraw}
+                className="min-h-[44px] inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[#ef4444]/40 bg-[#dc2626]/15 hover:bg-[#dc2626]/25 text-[#fca5a5] text-xs sm:text-sm font-bold transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <ArrowDownLeft className="w-3.5 h-3.5 text-[#f87171]" />
+                <span>Withdraw (निकासी)</span>
+              </button>
+            )}
+          </div>
 
           {isGameOver ? (
             <button
@@ -192,6 +223,7 @@ export const RoundSummaryModal: React.FC<RoundSummaryModalProps> = ({
             </button>
           )}
         </div>
+
       </div>
     </div>
   );

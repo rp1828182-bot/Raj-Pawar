@@ -1,22 +1,41 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowDownLeft,
   ArrowDownToLine,
   BookOpen,
   CheckCircle2,
+  Coins,
   Crown,
+  Eye,
   Flag,
   FolderPlus,
+  Gift,
   Layers,
   LogOut,
+  Palette,
+  Play,
   Plus,
+  RotateCcw,
   Sparkles,
+  Users,
   Volume2,
   VolumeX,
+  Wallet,
 } from 'lucide-react';
+import { CardCustomizerModal, FELT_THEMES } from './components/CardCustomizerModal';
+import {
+  AVATAR_PRIYA,
+  AVATAR_RAHUL,
+  AVATAR_YOU,
+  FriendsGameConfig,
+  FriendsRoomModal,
+} from './components/FriendsRoomModal';
+import { InGameFriendChat } from './components/InGameFriendChat';
 import { PlayingCard } from './components/PlayingCard';
 import { RoundSummaryModal } from './components/RoundSummaryModal';
 import { RulesModal } from './components/RulesModal';
-import { TitleMenu } from './components/TitleMenu';
+import { CASH_STAKES, TitleMenu } from './components/TitleMenu';
+import { WalletModal } from './components/WalletModal';
 import { decideBotDiscard, decideBotDraw } from './game/botAI';
 import {
   autoGroupHand,
@@ -32,22 +51,75 @@ import {
 import { soundEngine } from './game/sound';
 import {
   Card,
+  CardThemeId,
+  CashStake,
   Difficulty,
+  FeltThemeId,
   GameMode,
   Player,
   Rank,
   RoundResult,
   ScreenState,
+  TableCategory,
   TableSize,
   TurnPhase,
+  WalletState,
 } from './game/types';
 
 const FELT_BG_IMAGE = '/src/assets/images/royal_table_felt_1795225342247.jpg';
-const AVATAR_PLAYER = '/src/assets/images/avatar_player_1795225344862.jpg';
+const AVATAR_PLAYER = AVATAR_YOU;
 const AVATAR_MEERA = '/src/assets/images/avatar_bot_meera_1795225344504.jpg';
 const AVATAR_VIKRAM = '/src/assets/images/avatar_bot_vikram_1795225344382.jpg';
 
-function createInitialPlayers(tableSize: TableSize): Player[] {
+const WALLET_STORAGE_KEY = 'royal_rummy_wallet_v1';
+const THEME_STORAGE_KEY = 'royal_rummy_card_theme_v1';
+const FELT_STORAGE_KEY = 'royal_rummy_felt_theme_v1';
+
+function loadInitialWallet(): WalletState {
+  try {
+    const raw = localStorage.getItem(WALLET_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.totalBalance === 'number') {
+        return parsed;
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return {
+    totalBalance: 10,
+    bonusCash: 10,
+    depositCash: 0,
+    winningCash: 0,
+    hasClaimedWelcomeBonus: true,
+  };
+}
+
+function createInitialPlayers(
+  tableSize: TableSize,
+  category: TableCategory = 'CASH',
+  customConfig?: FriendsGameConfig | null
+): Player[] {
+  if (customConfig && customConfig.players.length > 0) {
+    return customConfig.players.slice(0, tableSize).map((p) => ({
+      id: p.id,
+      name: p.name,
+      isHuman: p.isHuman,
+      avatarUrl: p.avatarUrl,
+      groups: [],
+      totalScore: 0,
+      dropped: false,
+      eliminated: false,
+      turnsTaken: 0,
+    }));
+  }
+
+  const p2Name = category === 'FRIENDS' ? 'Rahul' : 'Meera';
+  const p2Avatar = category === 'FRIENDS' ? AVATAR_RAHUL : AVATAR_MEERA;
+  const p3Name = category === 'FRIENDS' ? 'Priya' : 'Vikram';
+  const p3Avatar = category === 'FRIENDS' ? AVATAR_PRIYA : AVATAR_VIKRAM;
+
   const players: Player[] = [
     {
       id: 'human',
@@ -61,10 +133,10 @@ function createInitialPlayers(tableSize: TableSize): Player[] {
       turnsTaken: 0,
     },
     {
-      id: 'bot-meera',
-      name: 'Meera',
+      id: 'player-2',
+      name: p2Name,
       isHuman: false,
-      avatarUrl: AVATAR_MEERA,
+      avatarUrl: p2Avatar,
       groups: [],
       totalScore: 0,
       dropped: false,
@@ -75,10 +147,10 @@ function createInitialPlayers(tableSize: TableSize): Player[] {
 
   if (tableSize === 3) {
     players.push({
-      id: 'bot-vikram',
-      name: 'Vikram',
+      id: 'player-3',
+      name: p3Name,
       isHuman: false,
-      avatarUrl: AVATAR_VIKRAM,
+      avatarUrl: p3Avatar,
       groups: [],
       totalScore: 0,
       dropped: false,
@@ -104,7 +176,31 @@ function getModeLabel(mode: GameMode): string {
 }
 
 export default function App() {
-  // Match Configuration
+  // Wallet State with persistent ₹10 Welcome Bonus
+  const [wallet, setWallet] = useState<WalletState>(loadInitialWallet);
+
+  // Themes: Card Back & Table Baize Felt
+  const [cardTheme, setCardTheme] = useState<CardThemeId>(() => {
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY) as CardThemeId;
+      if (saved) return saved;
+    } catch {}
+    return 'EMERALD_GOLD';
+  });
+
+  const [feltTheme, setFeltTheme] = useState<FeltThemeId>(() => {
+    try {
+      const saved = localStorage.getItem(FELT_STORAGE_KEY) as FeltThemeId;
+      if (saved) return saved;
+    } catch {}
+    return 'CLASSIC_GREEN';
+  });
+
+  // Match & Category Configuration
+  const [category, setCategory] = useState<TableCategory>('CASH');
+  const [activeCashStake, setActiveCashStake] = useState<CashStake>(CASH_STAKES[2]); // ₹10 Bonus Table default
+  const [friendsConfig, setFriendsConfig] = useState<FriendsGameConfig | null>(null);
+
   const [gameMode, setGameMode] = useState<GameMode>('POOL_101');
   const [tableSize, setTableSize] = useState<TableSize>(3);
   const [difficulty, setDifficulty] = useState<Difficulty>('CLUB_PRO');
@@ -112,15 +208,16 @@ export default function App() {
   // Top-level Game State Machine
   const [screenState, setScreenState] = useState<ScreenState>('TITLE_MENU');
   const [roundNumber, setRoundNumber] = useState<number>(1);
-  const [players, setPlayers] = useState<Player[]>(() => createInitialPlayers(3));
+  const [players, setPlayers] = useState<Player[]>(() => createInitialPlayers(3, 'CASH'));
   const [activePlayerIndex, setActivePlayerIndex] = useState<number>(0);
   const [turnPhase, setTurnPhase] = useState<TurnPhase>('DRAW');
 
-  // Deck & Table Piles
+  // Table Piles & Indicators
   const [closedDeck, setClosedDeck] = useState<Card[]>([]);
   const [discardPile, setDiscardPile] = useState<Card[]>([]);
   const [wildIndicatorCard, setWildIndicatorCard] = useState<Card | null>(null);
   const [wildRank, setWildRank] = useState<Rank>(1);
+  const [currentTablePot, setCurrentTablePot] = useState<number>(0);
 
   // Human Interaction State
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
@@ -128,17 +225,46 @@ export default function App() {
   const [newlyDrawnCardId, setNewlyDrawnCardId] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
-  // Overlays & Audio
+  // Modals & Overlays
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const [walletInitialTab, setWalletInitialTab] = useState<'WITHDRAW' | 'OVERVIEW'>('WITHDRAW');
+  const [cardCustomizerOpen, setCardCustomizerOpen] = useState(false);
+  const [friendsRoomOpen, setFriendsRoomOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [rulesTab, setRulesTab] = useState<'RULES' | 'CAPACITOR'>('RULES');
   const [muted, setMuted] = useState(false);
   const [roundResult, setRoundResult] = useState<RoundResult | null>(null);
   const [matchWinnerName, setMatchWinnerName] = useState<string | undefined>(undefined);
 
-  // Track bot draw-from-discard card ID within a single bot turn
+  // Pass 'n Play Privacy Screen for Same-Device multiplayer
+  const [passScreenActive, setPassScreenActive] = useState<boolean>(false);
+
+  // In-Game Friend Chat Speech Bubble
+  const [activeChatBubble, setActiveChatBubble] = useState<{ senderName: string; text: string } | null>(null);
+
+  // Ref tracking bot pick from discard pile
   const botPickedDiscardIdRef = useRef<string | undefined>(undefined);
 
   const poolLimit = gameMode === 'POOL_101' ? 101 : gameMode === 'POOL_201' ? 201 : null;
+
+  // Persist wallet & themes
+  useEffect(() => {
+    try {
+      localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(wallet));
+    } catch {}
+  }, [wallet]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, cardTheme);
+    } catch {}
+  }, [cardTheme]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FELT_STORAGE_KEY, feltTheme);
+    } catch {}
+  }, [feltTheme]);
 
   const showToast = useCallback((msg: string) => {
     setFeedbackMessage(msg);
@@ -146,9 +272,24 @@ export default function App() {
 
   useEffect(() => {
     if (!feedbackMessage) return;
-    const t = setTimeout(() => setFeedbackMessage(null), 3200);
+    const t = setTimeout(() => setFeedbackMessage(null), 3500);
     return () => clearTimeout(t);
   }, [feedbackMessage]);
+
+  useEffect(() => {
+    if (!activeChatBubble) return;
+    const t = setTimeout(() => setActiveChatBubble(null), 4000);
+    return () => clearTimeout(t);
+  }, [activeChatBubble]);
+
+  const handleTopUpDemo = useCallback((amount: number) => {
+    setWallet((prev) => {
+      const nextTotal = prev.totalBalance + amount;
+      const nextDeposit = prev.depositCash + amount;
+      return { ...prev, totalBalance: nextTotal, depositCash: nextDeposit };
+    });
+    showToast(`+₹${amount.toFixed(2)} डेमो चिप्स आपके वॉलेट में जोड़े गए!`);
+  }, [showToast]);
 
   const dealNewRound = useCallback(
     (basePlayers: Player[], nextRoundNum: number) => {
@@ -191,7 +332,6 @@ export default function App() {
         };
       });
 
-      // Pick first non-eliminated starter (rotate by roundNumber - 1)
       const activeIndices = formattedPlayers
         .map((p, idx) => (!p.eliminated ? idx : -1))
         .filter((idx) => idx !== -1);
@@ -211,6 +351,7 @@ export default function App() {
       setNewlyDrawnCardId(null);
       setRoundResult(null);
       setFeedbackMessage(null);
+      setPassScreenActive(false);
       botPickedDiscardIdRef.current = undefined;
       setScreenState('PLAYING');
       soundEngine.playCardSnap();
@@ -218,10 +359,143 @@ export default function App() {
     []
   );
 
+  // Deduct entry fee when starting a Cash match
   const handleStartGame = () => {
-    const freshPlayers = createInitialPlayers(tableSize);
+    let stakeCost = 0;
+    let prize = 0;
+
+    if (category === 'CASH') {
+      stakeCost = activeCashStake.entryFee;
+      prize = activeCashStake.prizePool;
+    } else if (category === 'FRIENDS' && friendsConfig && friendsConfig.stake > 0) {
+      stakeCost = friendsConfig.stake;
+      prize = friendsConfig.stake * (friendsConfig.tableSize === 3 ? 2.8 : 1.9);
+    }
+
+    if (stakeCost > 0) {
+      if (wallet.totalBalance < stakeCost) {
+        soundEngine.playError();
+        showToast(
+          `वॉलेट में बैलेंस कम है (Entry ₹${stakeCost})! कृपया फ्री ₹50 टॉप-अप प्राप्त करें।`
+        );
+        setWalletInitialTab('OVERVIEW');
+        setWalletModalOpen(true);
+        return;
+      }
+
+      // Deduct entry fee: bonusCash first, then deposit, then winnings
+      setWallet((prev) => {
+        let rem = stakeCost;
+        let newBonus = prev.bonusCash;
+        let newDeposit = prev.depositCash;
+        let newWinning = prev.winningCash;
+
+        if (newBonus >= rem) {
+          newBonus -= rem;
+          rem = 0;
+        } else {
+          rem -= newBonus;
+          newBonus = 0;
+        }
+
+        if (rem > 0) {
+          if (newDeposit >= rem) {
+            newDeposit -= rem;
+            rem = 0;
+          } else {
+            rem -= newDeposit;
+            newDeposit = 0;
+          }
+        }
+
+        if (rem > 0) {
+          newWinning = Math.max(0, newWinning - rem);
+        }
+
+        const newTotal = newBonus + newDeposit + newWinning;
+        return {
+          ...prev,
+          bonusCash: Number(newBonus.toFixed(2)),
+          depositCash: Number(newDeposit.toFixed(2)),
+          winningCash: Number(newWinning.toFixed(2)),
+          totalBalance: Number(newTotal.toFixed(2)),
+        };
+      });
+
+      setCurrentTablePot(prize);
+      soundEngine.playCoins();
+      showToast(`टेबल में प्रवेश: ₹${stakeCost} एंट्री कटी · पॉट ₹${prize.toFixed(2)}`);
+    } else {
+      setCurrentTablePot(0);
+    }
+
+    const freshPlayers = createInitialPlayers(tableSize, category, friendsConfig);
     setMatchWinnerName(undefined);
     dealNewRound(freshPlayers, 1);
+  };
+
+  const handleStartFriendsGame = (config: FriendsGameConfig) => {
+    setFriendsConfig(config);
+    setTableSize(config.tableSize);
+    setCategory('FRIENDS');
+
+    let prize = 0;
+    if (config.stake > 0) {
+      prize = config.stake * (config.tableSize === 3 ? 2.8 : 1.9);
+      if (wallet.totalBalance < config.stake) {
+        soundEngine.playError();
+        showToast(`वॉलेट में बैलेंस कम है! कम से कम ₹${config.stake} आवश्यक है।`);
+        setWalletInitialTab('OVERVIEW');
+        setWalletModalOpen(true);
+        return;
+      }
+
+      // Deduct stake
+      setWallet((prev) => {
+        let rem = config.stake;
+        let newBonus = prev.bonusCash;
+        let newDeposit = prev.depositCash;
+        let newWinning = prev.winningCash;
+
+        if (newBonus >= rem) {
+          newBonus -= rem;
+          rem = 0;
+        } else {
+          rem -= newBonus;
+          newBonus = 0;
+        }
+
+        if (rem > 0) {
+          if (newDeposit >= rem) {
+            newDeposit -= rem;
+            rem = 0;
+          } else {
+            rem -= newDeposit;
+            newDeposit = 0;
+          }
+        }
+
+        if (rem > 0) {
+          newWinning = Math.max(0, newWinning - rem);
+        }
+
+        return {
+          ...prev,
+          bonusCash: Number(newBonus.toFixed(2)),
+          depositCash: Number(newDeposit.toFixed(2)),
+          winningCash: Number(newWinning.toFixed(2)),
+          totalBalance: Number((newBonus + newDeposit + newWinning).toFixed(2)),
+        };
+      });
+      setCurrentTablePot(prize);
+    } else {
+      setCurrentTablePot(0);
+    }
+
+    const freshPlayers = createInitialPlayers(config.tableSize, 'FRIENDS', config);
+    setMatchWinnerName(undefined);
+    dealNewRound(freshPlayers, 1);
+    showToast(`प्राइवेट टेबल शुरू! रूम कोड: ${config.roomCode}`);
   };
 
   const toggleMute = () => {
@@ -237,7 +511,8 @@ export default function App() {
     screenState === 'PLAYING' &&
     activePlayer?.isHuman &&
     !activePlayer.dropped &&
-    !activePlayer.eliminated;
+    !activePlayer.eliminated &&
+    !passScreenActive;
 
   const humanEvaluation = useMemo(() => {
     return evaluateHand(humanPlayer.groups, wildRank);
@@ -306,7 +581,7 @@ export default function App() {
         };
       });
 
-      // Check match end conditions
+      // Match End conditions
       const survivors = syncedPlayers.filter((p) => !p.eliminated);
       let isMatchOver = false;
       let winnerNameForMatch: string | undefined;
@@ -325,6 +600,26 @@ export default function App() {
 
       const winnerObj = syncedPlayers.find((p) => p.id === winnerId);
 
+      // Settle Pot in Cash/Friendly mode
+      if (currentTablePot > 0 && winnerId === 'human') {
+        setWallet((prev) => {
+          const nextWinning = prev.winningCash + currentTablePot;
+          const nextTotal = prev.totalBalance + currentTablePot;
+          return {
+            ...prev,
+            winningCash: Number(nextWinning.toFixed(2)),
+            totalBalance: Number(nextTotal.toFixed(2)),
+          };
+        });
+        soundEngine.playVictory();
+        soundEngine.playCoins();
+        showToast(`शानदार जीत! आपने ₹${currentTablePot.toFixed(2)} का पॉट जीत लिया!`);
+      } else if (winnerId === 'human') {
+        soundEngine.playVictory();
+      } else {
+        soundEngine.playCardSnap();
+      }
+
       setPlayers(syncedPlayers);
       setMatchWinnerName(winnerNameForMatch);
       setRoundResult({
@@ -332,18 +627,13 @@ export default function App() {
         winnerId,
         winnerName: winnerObj?.name ?? 'Winner',
         winReason,
+        cashPotWon: currentTablePot > 0 && winnerId === 'human' ? currentTablePot : undefined,
         playerBreakdown: breakdown,
       });
 
-      if (winnerId === 'human') {
-        soundEngine.playVictory();
-      } else {
-        soundEngine.playCardSnap();
-      }
-
       setScreenState(isMatchOver ? 'GAME_OVER' : 'ROUND_SUMMARY');
     },
-    [gameMode, poolLimit, roundNumber, wildRank]
+    [currentTablePot, gameMode, poolLimit, roundNumber, showToast, wildRank]
   );
 
   // Human Draw from Closed Deck
@@ -384,7 +674,7 @@ export default function App() {
     soundEngine.playCardSnap();
   };
 
-  // Human Draw from Open Discard Pile
+  // Human Draw from Discard Pile
   const handleDrawDiscard = () => {
     if (!isHumanTurn || turnPhase !== 'DRAW') return;
     if (discardPile.length === 0) return;
@@ -433,7 +723,6 @@ export default function App() {
       return;
     }
 
-    // In 3-player mode when human drops, settle round cleanly by giving lowest-deadwood active bot the win
     const rankedBots = [...remainingActive].sort((a, b) => {
       const evalA = evaluateHand(autoGroupHand(a.groups.flat(), wildRank), wildRank);
       const evalB = evaluateHand(autoGroupHand(b.groups.flat(), wildRank), wildRank);
@@ -478,7 +767,7 @@ export default function App() {
     }
   };
 
-  // Group Selected Cards into New Group
+  // Group Selected Cards
   const handleGroupSelected = () => {
     if (selectedCardIds.length === 0) return;
     const selectedSet = new Set(selectedCardIds);
@@ -499,7 +788,7 @@ export default function App() {
     soundEngine.playCardSnap();
   };
 
-  // Move Selected Cards into Existing Target Group
+  // Move Selected Cards to Group
   const handleMoveSelectedToGroup = (targetGroupIndex: number) => {
     if (selectedCardIds.length === 0) return;
     const selectedSet = new Set(selectedCardIds);
@@ -511,7 +800,6 @@ export default function App() {
       .map((grp) => grp.filter((c) => !selectedSet.has(c.id)))
       .filter((grp) => grp.length > 0);
 
-    // Find where target group now sits
     let insertIdx = strippedGroups.findIndex((grp) =>
       grp.some((c) => c.id === targetSampleId)
     );
@@ -574,6 +862,11 @@ export default function App() {
     setActivePlayerIndex(nextIdx);
     setTurnPhase('DRAW');
     soundEngine.playCardSnap();
+
+    // Check pass 'n play transition
+    if (friendsConfig?.isPassNPlay && updatedPlayers[nextIdx]?.isHuman) {
+      setPassScreenActive(true);
+    }
   };
 
   // Human Finish & Declare
@@ -596,7 +889,6 @@ export default function App() {
     let winningGroups = remainingGroups;
     let evalCheck = evaluateHand(remainingGroups, wildRank);
 
-    // Check if auto-grouping the 13 remaining cards satisfies a valid declaration
     if (!evalCheck.isValidDeclaration) {
       const optimal = autoGroupHand(remainingGroups.flat(), wildRank);
       const evalOptimal = evaluateHand(optimal, wildRank);
@@ -638,7 +930,7 @@ export default function App() {
     finalizeRound(updatedPlayers, 'human', 'VALID_DECLARE');
   };
 
-  // Automated Bot Turn Machine
+  // Bot Turn Automation
   useEffect(() => {
     if (screenState !== 'PLAYING') return;
     const current = players[activePlayerIndex];
@@ -737,12 +1029,26 @@ export default function App() {
         setActivePlayerIndex(nextIdx);
         setTurnPhase('DRAW');
         soundEngine.playCardSnap();
+
+        // If friends mode, bot sends occasional banter
+        if (category === 'FRIENDS' && Math.random() < 0.25) {
+          const banterList = [
+            'चलो अब तुम्हारी बारी!',
+            'अच्छा कार्ड था!',
+            'थोड़ा संभल कर खेलना!',
+          ];
+          setActiveChatBubble({
+            senderName: current.name,
+            text: banterList[Math.floor(Math.random() * banterList.length)],
+          });
+        }
       }, 750);
 
       return () => clearTimeout(timer);
     }
   }, [
     activePlayerIndex,
+    category,
     closedDeck,
     difficulty,
     discardPile,
@@ -764,12 +1070,49 @@ export default function App() {
           setTableSize={setTableSize}
           difficulty={difficulty}
           setDifficulty={setDifficulty}
+          category={category}
+          setCategory={setCategory}
+          activeCashStake={activeCashStake}
+          setActiveCashStake={setActiveCashStake}
+          wallet={wallet}
+          cardTheme={cardTheme}
+          feltTheme={feltTheme}
           onStartGame={handleStartGame}
           onOpenRules={(tab) => {
             setRulesTab(tab);
             setRulesOpen(true);
           }}
+          onOpenWallet={(tab = 'WITHDRAW') => {
+            setWalletInitialTab(tab);
+            setWalletModalOpen(true);
+          }}
+          onOpenCardCustomizer={() => setCardCustomizerOpen(true)}
+          onOpenFriendsRoom={() => setFriendsRoomOpen(true)}
         />
+
+        <WalletModal
+          isOpen={walletModalOpen}
+          wallet={wallet}
+          initialTab={walletInitialTab}
+          onClose={() => setWalletModalOpen(false)}
+          onTopUpDemo={handleTopUpDemo}
+        />
+
+        <CardCustomizerModal
+          isOpen={cardCustomizerOpen}
+          currentCardTheme={cardTheme}
+          currentFeltTheme={feltTheme}
+          onSelectCardTheme={(theme) => setCardTheme(theme)}
+          onSelectFeltTheme={(felt) => setFeltTheme(felt)}
+          onClose={() => setCardCustomizerOpen(false)}
+        />
+
+        <FriendsRoomModal
+          isOpen={friendsRoomOpen}
+          onClose={() => setFriendsRoomOpen(false)}
+          onStartFriendsGame={handleStartFriendsGame}
+        />
+
         <RulesModal
           isOpen={rulesOpen}
           initialTab={rulesTab}
@@ -783,7 +1126,6 @@ export default function App() {
   const canDrop = isHumanTurn && turnPhase === 'DRAW';
   const dropCost = humanPlayer.turnsTaken === 0 ? 20 : 40;
 
-  // Check if selecting 1 card makes remaining 13 valid for Declare preview
   let canDeclareNow = false;
   if (isHumanTurn && turnPhase === 'DISCARD' && selectedCardIds.length === 1) {
     const finishId = selectedCardIds[0];
@@ -802,9 +1144,15 @@ export default function App() {
     }
   }
 
+  const currentFeltConfig =
+    FELT_THEMES.find((f) => f.id === feltTheme) ?? FELT_THEMES[0];
+
   return (
-    <div className="min-h-screen flex flex-col royal-felt-surface relative overflow-x-hidden select-none">
-      {/* Atmospheric Felt Backdrop */}
+    <div
+      className={`min-h-screen flex flex-col relative overflow-x-hidden select-none ${currentFeltConfig.bgClass}`}
+      style={{ backgroundImage: currentFeltConfig.vignetteStyle }}
+    >
+      {/* Felt Image Backdrop */}
       <img
         src={FELT_BG_IMAGE}
         alt=""
@@ -813,10 +1161,22 @@ export default function App() {
         className="fixed inset-0 w-full h-full object-cover opacity-25 pointer-events-none"
       />
 
-      {/* Compact Top HUD Bar */}
+      {/* Floating Active Friend Chat Speech Bubble */}
+      {activeChatBubble && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 bg-[#0f2d1e] border-2 border-[#e5b84b] text-white px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-2 animate-bounce">
+          <Sparkles className="w-4 h-4 text-[#e5b84b] shrink-0" />
+          <div className="text-xs sm:text-sm font-semibold">
+            <span className="text-[#e5b84b] font-bold">{activeChatBubble.senderName}: </span>
+            <span>{activeChatBubble.text}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Top HUD Bar */}
       <header className="relative z-20 w-full border-b border-white/10 bg-[#061810]/85 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4 min-w-0">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-3">
+          {/* Zone 1: Table Info */}
+          <div className="flex items-center gap-3 min-w-0">
             <span className="font-display font-bold text-base sm:text-lg text-[#f5f3ec] whitespace-nowrap shrink-0">
               Royal Rummy
             </span>
@@ -830,33 +1190,93 @@ export default function App() {
                 ·
               </span>
               Wild: <strong className="text-[#e5b84b]">{getRankLabel(wildRank)}</strong>
+              {currentTablePot > 0 && (
+                <>
+                  <span className="mx-1.5" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="text-[#34d399] font-bold font-mono-num">
+                    Pot: ₹{currentTablePot.toFixed(2)}
+                  </span>
+                </>
+              )}
             </span>
           </div>
 
+          {/* Zone 2: Wallet & Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Wallet Quick Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setWalletInitialTab('OVERVIEW');
+                setWalletModalOpen(true);
+              }}
+              className="min-h-[38px] px-2.5 py-1 rounded-lg bg-[#061810] border border-[#d4af37]/40 text-xs font-mono-num font-bold text-[#e5b84b] hover:bg-white/10 flex items-center gap-1.5 cursor-pointer transition-colors"
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>₹{wallet.totalBalance.toFixed(2)}</span>
+            </button>
+
+            {/* WITHDRAW BUTTON (Fulfills: widrol ka option hona lekhin widrol nhi hona) */}
+            <button
+              type="button"
+              onClick={() => {
+                setWalletInitialTab('WITHDRAW');
+                setWalletModalOpen(true);
+              }}
+              className="min-h-[38px] px-3 py-1 rounded-lg bg-[#dc2626]/20 hover:bg-[#dc2626]/35 border border-[#ef4444]/50 text-[#fca5a5] text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+            >
+              <ArrowDownLeft className="w-3.5 h-3.5 text-[#f87171]" />
+              <span className="hidden sm:inline">Withdraw /</span>
+              <span>निकासी</span>
+            </button>
+
+            {/* Change Cards Theme Trigger */}
+            <button
+              type="button"
+              onClick={() => setCardCustomizerOpen(true)}
+              title="Change Cards & Table Style"
+              className="min-h-[38px] px-2.5 py-1 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 text-xs text-[#dbe5df] flex items-center gap-1.5 cursor-pointer transition-colors"
+            >
+              <Palette className="w-3.5 h-3.5 text-[#e5b84b]" />
+              <span className="hidden md:inline">कार्ड बदलें</span>
+            </button>
+
+            {/* In-Game Friend Chat */}
+            <InGameFriendChat
+              onSendMessage={(msg) => {
+                setActiveChatBubble({ senderName: 'You', text: msg });
+                soundEngine.playSelect();
+              }}
+              activeBubble={activeChatBubble}
+            />
+
             <button
               type="button"
               onClick={toggleMute}
               aria-label={muted ? 'Unmute sounds' : 'Mute sounds'}
-              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-[#c7d3cc] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg text-[#c7d3cc] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
             >
               {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </button>
+
             <button
               type="button"
               onClick={() => {
                 setRulesTab('RULES');
                 setRulesOpen(true);
               }}
-              className="min-h-[40px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#dbe5df] hover:bg-white/10 transition-colors whitespace-nowrap cursor-pointer"
+              className="min-h-[38px] inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-[#dbe5df] hover:bg-white/10 transition-colors cursor-pointer"
             >
               <BookOpen className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Rules</span>
             </button>
+
             <button
               type="button"
               onClick={() => setScreenState('TITLE_MENU')}
-              className="min-h-[40px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/15 text-xs font-medium text-[#dbe5df] hover:bg-white/10 transition-colors whitespace-nowrap cursor-pointer"
+              className="min-h-[38px] inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-white/15 text-xs font-medium text-[#dbe5df] hover:bg-white/10 transition-colors cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Table</span>
@@ -917,14 +1337,13 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Compact opponent facedown card fan + count */}
+                {/* Opponent Card Stack Preview */}
                 <div className="flex items-center gap-2 shrink-0">
                   <div className="hidden sm:flex -space-x-5">
                     {Array.from({ length: Math.min(4, Math.max(1, cardCount)) }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-6 h-9 rounded border border-[#d4af37]/40 bg-[#0b2f20] shadow"
-                      />
+                      <div key={i} className="w-6 h-9 shrink-0">
+                        <PlayingCard faceDown themeId={cardTheme} size="xs" />
+                      </div>
                     ))}
                   </div>
                   <span className="text-xs font-mono-num font-semibold text-[#dbe5df]">
@@ -936,12 +1355,12 @@ export default function App() {
           })}
         </section>
 
-        {/* Center Felt Zone: Wild Joker + Closed Deck + Open Discard Pile + Finish Slot */}
+        {/* Center Felt Zone: Pot Badge + Wild Joker + Closed Deck + Discard Pile + Finish Slot */}
         <section
-          aria-label="Center Deck and Discard Area"
+          aria-label="Center Table Area"
           className="flex flex-col items-center justify-center gap-3 my-auto py-1"
         >
-          {/* Turn Prompt / Toast Banner */}
+          {/* Turn Feedback / Action Toast */}
           <div className="min-h-[28px] flex items-center justify-center text-center px-3">
             {feedbackMessage ? (
               <span className="text-xs sm:text-sm font-medium text-[#fef3c7] bg-[#78350f]/80 border border-[#f59e0b]/40 px-3.5 py-1 rounded-lg">
@@ -960,8 +1379,21 @@ export default function App() {
             )}
           </div>
 
-          {/* Piles Row */}
-          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 px-4 py-4 rounded-2xl bg-[#061b12]/65 border border-[#d4af37]/20">
+          {/* Central Cards & Piles Row */}
+          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-7 px-4 py-4 rounded-2xl bg-[#061b12]/75 border border-[#d4af37]/25 shadow-xl">
+            {/* Live Pot Badge if Cash or Friendly Stake */}
+            {currentTablePot > 0 && (
+              <div className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl bg-[#103828] border border-[#34d399]/40 text-center">
+                <div className="text-[10px] text-[#9eb3a8] uppercase font-bold flex items-center gap-1">
+                  <Coins className="w-3 h-3 text-[#e5b84b]" />
+                  <span>Table Pot</span>
+                </div>
+                <div className="text-base font-bold font-mono-num text-[#34d399]">
+                  ₹{currentTablePot.toFixed(2)}
+                </div>
+              </div>
+            )}
+
             {/* Wild Joker Cut Indicator */}
             <div className="flex flex-col items-center gap-1.5">
               <div className="text-[11px] font-medium text-[#e5b84b] flex items-center gap-1">
@@ -970,7 +1402,12 @@ export default function App() {
               </div>
               {wildIndicatorCard && (
                 <div className="relative">
-                  <PlayingCard card={wildIndicatorCard} wildRank={wildRank} size="md" />
+                  <PlayingCard
+                    card={wildIndicatorCard}
+                    wildRank={wildRank}
+                    themeId={cardTheme}
+                    size="md"
+                  />
                 </div>
               )}
             </div>
@@ -991,6 +1428,7 @@ export default function App() {
               >
                 <PlayingCard
                   faceDown
+                  themeId={cardTheme}
                   size="lg"
                   onClick={isHumanTurn && turnPhase === 'DRAW' ? handleDrawClosed : undefined}
                   disabled={!isHumanTurn || turnPhase !== 'DRAW'}
@@ -1019,6 +1457,7 @@ export default function App() {
                   <PlayingCard
                     card={topDiscardCard}
                     wildRank={wildRank}
+                    themeId={cardTheme}
                     size="lg"
                     onClick={
                       isHumanTurn && turnPhase === 'DRAW'
@@ -1079,9 +1518,9 @@ export default function App() {
         {/* Player Hand & Meld Workspace */}
         <section
           aria-label="Your Hand"
-          className="bg-[#061810]/90 border border-white/12 rounded-2xl p-3 sm:p-4 space-y-3"
+          className="bg-[#061810]/92 border border-white/12 rounded-2xl p-3 sm:p-4 space-y-3 shadow-2xl"
         >
-          {/* Hand Telemetry & Status Strip (No pill clutter — clean typographic separators) */}
+          {/* Hand Telemetry */}
           <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-white/10">
             <div className="flex items-center gap-2.5 min-w-0">
               <img
@@ -1127,7 +1566,7 @@ export default function App() {
           </div>
 
           {/* Grouped Cards Tray */}
-          <div className="flex items-end gap-4 sm:gap-5 overflow-x-auto hand-scroll pt-3 pb-2 px-1">
+          <div className="flex items-end gap-3 sm:gap-5 overflow-x-auto hand-scroll pt-3 pb-2 px-1">
             {humanEvaluation.groups.map((grp, groupIdx) => {
               const hasSelectionOutsideGroup = selectedCardIds.some(
                 (id) => !grp.cards.some((c) => c.id === id)
@@ -1168,6 +1607,7 @@ export default function App() {
                         key={card.id}
                         card={card}
                         wildRank={wildRank}
+                        themeId={cardTheme}
                         selected={selectedCardIds.includes(card.id)}
                         isNew={card.id === newlyDrawnCardId}
                         size="md"
@@ -1180,7 +1620,7 @@ export default function App() {
             })}
           </div>
 
-          {/* Thumb-Friendly Bottom Action Bar */}
+          {/* Bottom Action Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10">
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -1199,6 +1639,16 @@ export default function App() {
               >
                 <Sparkles className="w-3.5 h-3.5 text-[#e5b84b]" />
                 Auto-Group
+              </button>
+
+              {/* CARD CHANG KRNA (Change Deck / Cards Action) */}
+              <button
+                type="button"
+                onClick={() => setCardCustomizerOpen(true)}
+                className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/8 hover:bg-white/15 border border-white/10 text-xs font-semibold text-[#dbe5df] transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Palette className="w-3.5 h-3.5 text-[#e5b84b]" />
+                कार्ड बदलें
               </button>
 
               {selectedCardIds.length > 0 && (
@@ -1273,7 +1723,59 @@ export default function App() {
         </section>
       </main>
 
+      {/* PASS 'N PLAY PRIVACY CURTAIN (For friends playing on same phone) */}
+      {passScreenActive && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 text-center">
+          <div className="max-w-sm space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-[#d4af37]/20 border border-[#d4af37]/40 flex items-center justify-center mx-auto text-[#e5b84b]">
+              <Eye className="w-8 h-8" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-xl font-display font-bold text-white">
+                फोन {activePlayer?.name} को दें!
+              </h3>
+              <p className="text-xs text-[#b6c7be]">
+                Pass device to {activePlayer?.name} · Hand privacy is locked
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playSelect();
+                setPassScreenActive(false);
+              }}
+              className="w-full min-h-[48px] py-3 px-6 rounded-xl bg-[#d4af37] text-[#071f15] font-bold text-sm hover:bg-[#e5b84b] transition-colors cursor-pointer"
+            >
+              मैं तैयार हूँ, पत्ते दिखाएं (I Am Ready)
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
+      <WalletModal
+        isOpen={walletModalOpen}
+        wallet={wallet}
+        initialTab={walletInitialTab}
+        onClose={() => setWalletModalOpen(false)}
+        onTopUpDemo={handleTopUpDemo}
+      />
+
+      <CardCustomizerModal
+        isOpen={cardCustomizerOpen}
+        currentCardTheme={cardTheme}
+        currentFeltTheme={feltTheme}
+        onSelectCardTheme={(theme) => setCardTheme(theme)}
+        onSelectFeltTheme={(felt) => setFeltTheme(felt)}
+        onClose={() => setCardCustomizerOpen(false)}
+      />
+
+      <FriendsRoomModal
+        isOpen={friendsRoomOpen}
+        onClose={() => setFriendsRoomOpen(false)}
+        onStartFriendsGame={handleStartFriendsGame}
+      />
+
       <RulesModal
         isOpen={rulesOpen}
         initialTab={rulesTab}
@@ -1285,11 +1787,16 @@ export default function App() {
           result={roundResult}
           wildRank={wildRank}
           gameMode={gameMode}
+          cardTheme={cardTheme}
           isGameOver={screenState === 'GAME_OVER'}
           matchWinnerName={matchWinnerName}
           onNextRound={() => dealNewRound(players, roundNumber + 1)}
           onReturnToMenu={() => setScreenState('TITLE_MENU')}
           onPlayAgain={handleStartGame}
+          onOpenWithdraw={() => {
+            setWalletInitialTab('WITHDRAW');
+            setWalletModalOpen(true);
+          }}
         />
       )}
     </div>

@@ -117,6 +117,50 @@ class SoundEngine {
     }
   }
 
+  public playCoins() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const pitches = [987.77, 1318.51, 1567.98, 2093.0];
+      pitches.forEach((freq, idx) => {
+        const now = ctx.currentTime + idx * 0.05;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0.06, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.18);
+      });
+    } catch {
+      // Ignore
+    }
+  }
+
+  public playCardSwap() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(480, now + 0.08);
+      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    } catch {
+      // Ignore
+    }
+  }
+
   public playError() {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -140,3 +184,4 @@ class SoundEngine {
 }
 
 export const soundEngine = new SoundEngine();
+

@@ -51,11 +51,59 @@ export interface Player {
   lastAction?: string;
 }
 
+export type TableCategory = 'PRACTICE' | 'CASH' | 'FRIENDS';
+
+export type CardThemeId =
+  | 'EMERALD_GOLD'
+  | 'RUBY_CRIMSON'
+  | 'SAPPHIRE_BLUE'
+  | 'GOLDEN_MAHARAJA'
+  | 'OBSIDIAN_BLACK';
+
+export type FeltThemeId = 'CLASSIC_GREEN' | 'ROYAL_MAROON' | 'MIDNIGHT_NAVY';
+
+export interface CardThemeConfig {
+  id: CardThemeId;
+  name: string;
+  nameHi: string;
+  imageSrc?: string;
+  accentColor: string;
+  borderStyle: string;
+  description: string;
+}
+
+export interface FeltThemeConfig {
+  id: FeltThemeId;
+  name: string;
+  nameHi: string;
+  bgClass: string;
+  vignetteStyle: string;
+}
+
+export interface WalletState {
+  totalBalance: number;
+  bonusCash: number;
+  depositCash: number;
+  winningCash: number;
+  hasClaimedWelcomeBonus: boolean;
+}
+
+export interface CashStake {
+  id: string;
+  name: string;
+  nameHi: string;
+  entryFee: number;
+  pointValue: number;
+  prizePool: number;
+  badge?: string;
+}
+
 export interface RoundResult {
   roundNumber: number;
   winnerId: string;
   winnerName: string;
   winReason: 'VALID_DECLARE' | 'ALL_DROPPED';
+  cashPotWon?: number;
   playerBreakdown: {
     playerId: string;
     name: string;
@@ -65,6 +113,8 @@ export interface RoundResult {
     totalScore: number;
     dropped: boolean;
     eliminated: boolean;
+    cashDelta?: number;
     evaluation: HandEvaluation;
   }[];
 }
+
