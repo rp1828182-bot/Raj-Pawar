@@ -1,0 +1,8 @@
+{
+  "name": "Royal Rummy",
+  "description": "Classic 13-card Royal Rummy tabletop card game with Pure Sequences, Wild Jokers, Pool & Points modes, and smart AI opponents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
